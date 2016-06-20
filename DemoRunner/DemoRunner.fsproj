@@ -88,9 +88,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Interfaces\Interfaces.fsproj">
+    <ProjectReference Include="..\Interfaces\Interfaces.csproj">
       <Name>Interfaces</Name>
-      <Project>{a949a9e2-5161-4bb7-bb6d-65cec8ba25e0}</Project>
+      <Project>{8ed882de-183a-4e05-9795-30f96935e509}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

@@ -23,8 +23,9 @@ type Visitor() =
 
     override t.Visit(discovered: ITestCaseDiscoveryMessage) =
         let value = base.Visit(discovered)
+        let test = XunitTestCaseProxy(discovered.TestCase :?> IXunitTestCase)
         let grain = GrainClient.GrainFactory.GetGrain<IRemoteTestRunner>(Guid.NewGuid())
-        let result = grain.RunXunit2(Immutable(discovered.TestCase :?> IXunitTestCase)).Result
+        let result = grain.RunXunit2(Immutable(test)).Result
         value
 
 [<EntryPoint>]
