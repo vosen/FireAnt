@@ -27,12 +27,12 @@ namespace FireAnt.Interfaces
         static void Serializer(object raw, BinaryTokenStreamWriter stream, Type _)
         {
             IXunitTestCase test = (IXunitTestCase)raw;
-            SerializationManager.Serialize(new XunitTestCaseProxy(test), stream);
+            SerializationManager.Serialize(new Xunit2TestCaseProxy(test), stream);
         }
 
         static object Deserializer(Type _, BinaryTokenStreamReader stream)
         {
-            return SerializationManager.Deserialize<XunitTestCaseProxy>(stream);
+            return SerializationManager.Deserialize<Xunit2TestCaseProxy>(stream);
         }
     }
 }

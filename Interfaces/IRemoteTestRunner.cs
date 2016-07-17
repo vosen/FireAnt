@@ -8,7 +8,6 @@ namespace FireAnt.Interfaces
 {
     public interface IRemoteTestRunner : IGrainWithGuidKey
     {
-        Task<RunSummary> RunXunit1(Immutable<ITestCase> test);
-        Task<RunSummary> RunXunit2(Immutable<XunitTestCaseProxy> test);
+        Task<Immutable<RemoteRunResult>> RunXunit1(string runId, Immutable<Xunit1TestCaseProxy[]> test);
     }
 }

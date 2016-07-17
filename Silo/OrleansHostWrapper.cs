@@ -136,6 +136,8 @@ namespace FireAnt.Silo
 
             var config = ClusterConfiguration.LocalhostPrimarySilo();
             config.AddMemoryStorageProvider();
+            config.AddMemoryStorageProvider(providerName: "PubSubStore");
+            config.AddSimpleMessageStreamProvider("SMSProvider", optimizeForImmutableData: true, pubSubType: Orleans.Streams.StreamPubSubType.ExplicitGrainBasedOnly);
             siloHost = new SiloHost(siloName, config);
 
             if (deploymentId != null)

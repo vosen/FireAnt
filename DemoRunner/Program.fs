@@ -1,45 +1,27 @@
 ﻿open FireAnt.Interfaces
 open Orleans
 open Orleans.Concurrency
+open Orleans.Providers.Streams.SimpleMessageStream
 open Orleans.Runtime.Configuration
+open Orleans.Streams
 open System
 open System.Threading
+open System.Threading.Tasks
 open Xunit
 open Xunit.Abstractions
 open Xunit.Sdk
 
-type Visitor() =
-    inherit TestMessageVisitor()
-
-    member val Finished = new ManualResetEventSlim()
-
-    interface IDisposable with
-        member t.Dispose() = t.Finished.Dispose()
-
-    override t.Visit(discoveryComplete: IDiscoveryCompleteMessage) =
-        let value = base.Visit(discoveryComplete)
-        t.Finished.Set()
-        value
-
-    override t.Visit(discovered: ITestCaseDiscoveryMessage) =
-        let value = base.Visit(discovered)
-        let test = XunitTestCaseProxy(discovered.TestCase :?> IXunitTestCase)
-        let grain = GrainClient.GrainFactory.GetGrain<IRemoteTestRunner>(Guid.NewGuid())
-        let result = grain.RunXunit2(Immutable(test)).Result
-        value
-
 [<EntryPoint>]
 let main argv =
-    GrainClient.Initialize(ClientConfiguration.LocalhostSilo());
-    using (new Visitor()) (fun visitor ->
-        let controller = new XunitFrontController(AppDomainSupport.Denied,
-                                                  @"D:\Users\vosen\Documents\visual studio 2015\Projects\Ant\DemoLibrary\bin\Debug\DemoLibrary.dll",
-                                                  shadowCopy= false)
-        using (controller) (fun controller ->
-            let conf = TestAssemblyConfiguration()
-            conf.PreEnumerateTheories <- Nullable(false)
-            controller.Find(false, visitor, TestFrameworkOptions.ForDiscovery(conf))
-            visitor.Finished.Wait()
-        )
-    )
+    let config = ClientConfiguration.LocalhostSilo()
+    config.AddSimpleMessageStreamProvider("SMSProvider", optimizeForImmutableData = true, pubSubType = StreamPubSubType.ExplicitGrainBasedOnly)
+    GrainClient.Initialize(config);
+    let streamProvider = GrainClient.GetStreamProvider("SMSProvider")
+    let clientId = Guid.NewGuid()
+    let stream = streamProvider.GetStream<string>(clientId, null)
+    let finished = new ManualResetEventSlim()
+    stream.SubscribeAsync((fun msg _ -> Console.WriteLine(msg); TaskDone.Done), (fun () -> finished.Set(); TaskDone.Done)) |> ignore
+    let client = GrainClient.GrainFactory.GetGrain<IRemoteTestDispatcher>(clientId);
+    client.Run("").Wait()
+    //finished.Wait()
     0 // return an integer exit code
