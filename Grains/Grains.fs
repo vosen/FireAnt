@@ -21,7 +21,7 @@ type IWorkspaceBuilder =
     abstract member Build: string -> FileInfo
 
 type ITestTimeRepository =
-    abstract member GetPredicted: string -> int
+    abstract member GetPredicted: string -> decimal
     abstract member Store: runId: string * test: string * time: decimal -> unit
 
 module Grains =

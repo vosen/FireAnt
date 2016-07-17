@@ -1,0 +1,10 @@
+﻿<ClientConfiguration xmlns="urn:orleans">
+  <StreamProviders>
+    <Provider
+      Type="Orleans.Providers.Streams.SimpleMessageStream.SimpleMessageStreamProvider"
+      Name="SMSProvider"
+      FireAndForgetDelivery="false"
+      OptimizeForImmutableData="true"/>
+  </StreamProviders>
+  <Gateway  Address="192.168.56.1" Port="11112" />
+</ClientConfiguration>

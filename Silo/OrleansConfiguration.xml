@@ -1,0 +1,26 @@
+﻿<OrleansConfiguration xmlns="urn:orleans">
+  <Globals>
+    <StorageProviders>
+      <Provider
+        Type="Orleans.StorageProviders.RedisStorage"
+        Name="PubSubStore"
+        UseJsonFormat="false"
+        RedisConnectionString="192.168.56.101:6379"/>
+    </StorageProviders>
+    <StreamProviders>
+      <Provider
+        Type="Orleans.Providers.Streams.SimpleMessageStream.SimpleMessageStreamProvider"
+        Name="SMSProvider"
+        FireAndForgetDelivery="false"
+        OptimizeForImmutableData="true"/>
+    </StreamProviders>
+    <SeedNode Address="192.168.56.1" Port="11111" />
+    <Liveness LivenessType ="MembershipTableGrain" />
+  </Globals>
+  <Defaults>
+    <Startup Type="FireAnt.Silo.Startup,FireAnt.Silo" />
+    <Networking Address="192.168.56.1" Port="11111" />
+    <ProxyingGateway Address="192.168.56.1" Port="11112" />
+  </Defaults>
+</OrleansConfiguration>
+

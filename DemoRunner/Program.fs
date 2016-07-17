@@ -13,8 +13,7 @@ open Xunit.Sdk
 
 [<EntryPoint>]
 let main argv =
-    let config = ClientConfiguration.LocalhostSilo()
-    config.AddSimpleMessageStreamProvider("SMSProvider", optimizeForImmutableData = true, pubSubType = StreamPubSubType.ExplicitGrainBasedOnly)
+    let config = ClientConfiguration.StandardLoad()
     GrainClient.Initialize(config);
     let streamProvider = GrainClient.GetStreamProvider("SMSProvider")
     let clientId = Guid.NewGuid()
@@ -22,6 +21,7 @@ let main argv =
     let finished = new ManualResetEventSlim()
     stream.SubscribeAsync((fun msg _ -> Console.WriteLine(msg); TaskDone.Done), (fun () -> finished.Set(); TaskDone.Done)) |> ignore
     let client = GrainClient.GrainFactory.GetGrain<IRemoteTestDispatcher>(clientId);
-    client.Run("").Wait()
+    let task = client.Run("")
+    task.Wait()
     //finished.Wait()
     0 // return an integer exit code

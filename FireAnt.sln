@@ -5,13 +5,15 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Grains", "Grains\Grains.fsproj", "{0514AD81-0B5D-4170-A412-BE6928B6867D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Silo", "Silo\Silo.csproj", "{5F079628-39B4-4300-A75E-E3A691856494}"
-EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DemoRunner", "DemoRunner\DemoRunner.fsproj", "{12A24C42-4061-46B2-BC4E-010D3F0531A3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Interfaces", "Interfaces\Interfaces.csproj", "{8ED882DE-183A-4E05-9795-30F96935E509}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Interfaces.FSharp", "Interfaces.FSharp\Interfaces.FSharp.fsproj", "{209B700B-71BD-4837-A77B-4AA212362B83}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Silo", "Silo\Silo.fsproj", "{4181C945-0B14-4C5F-9B9B-1BFD9D5FA81D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Orleans.StorageProviders.RedisStorage", "RedisStorage\Orleans.StorageProviders.RedisStorage.csproj", "{C64DA14D-16F0-4DC9-B329-FD71F6F2C8CB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,10 +25,6 @@ Global
 		{0514AD81-0B5D-4170-A412-BE6928B6867D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0514AD81-0B5D-4170-A412-BE6928B6867D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0514AD81-0B5D-4170-A412-BE6928B6867D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5F079628-39B4-4300-A75E-E3A691856494}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5F079628-39B4-4300-A75E-E3A691856494}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5F079628-39B4-4300-A75E-E3A691856494}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5F079628-39B4-4300-A75E-E3A691856494}.Release|Any CPU.Build.0 = Release|Any CPU
 		{12A24C42-4061-46B2-BC4E-010D3F0531A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{12A24C42-4061-46B2-BC4E-010D3F0531A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{12A24C42-4061-46B2-BC4E-010D3F0531A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -39,6 +37,14 @@ Global
 		{209B700B-71BD-4837-A77B-4AA212362B83}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{209B700B-71BD-4837-A77B-4AA212362B83}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{209B700B-71BD-4837-A77B-4AA212362B83}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4181C945-0B14-4C5F-9B9B-1BFD9D5FA81D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4181C945-0B14-4C5F-9B9B-1BFD9D5FA81D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4181C945-0B14-4C5F-9B9B-1BFD9D5FA81D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4181C945-0B14-4C5F-9B9B-1BFD9D5FA81D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C64DA14D-16F0-4DC9-B329-FD71F6F2C8CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C64DA14D-16F0-4DC9-B329-FD71F6F2C8CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C64DA14D-16F0-4DC9-B329-FD71F6F2C8CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C64DA14D-16F0-4DC9-B329-FD71F6F2C8CB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
