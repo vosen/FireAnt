@@ -4,7 +4,7 @@
       <Provider
         Type="Orleans.StorageProviders.RedisStorage"
         Name="PubSubStore"
-        UseJsonFormat="false"
+        UseJsonFormat="true"
         RedisConnectionString="192.168.56.101:6379"/>
     </StorageProviders>
     <StreamProviders>
