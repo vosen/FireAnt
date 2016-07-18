@@ -94,16 +94,10 @@ module Grains =
     [<ActivationCountBasedPlacement>]
     type RemoteTestDispatcher(wsBuilder: IWorkspaceBuilder, timing: ITestTimeRepository) =
         inherit Grain()
+
         let splitIntoGroups (tests: ResizeArray<ITestCase>) : ResizeArray<ITestCase[]> =
             ResizeArray.map (Array.singleton) tests
 
-        let sendToRunners (runId: string) (tests: ResizeArray<ITestCase[]>) : Task<Immutable<RemoteRunResult>>[] =
-            tests
-            |> ResizeArray.mapToArray (fun tests ->
-                   let runner = GrainClient.GrainFactory.GetGrain<IRemoteTestRunner>(Guid.NewGuid())
-                   let wrappedTests = Array.map (fun t -> Xunit1TestCaseProxy(t)) tests
-                   runner.RunXunit1(runId, wrappedTests.AsImmutable())
-               )
         let broadcastPartialResults (runId: string) (stream: IAsyncStream<RemoteRunResult>) (groups: ResizeArray<ITestCase[]>) (runTasks: Task<Immutable<RemoteRunResult>>[]) : Task =
             let onFinishedTest (stream: IAsyncStream<RemoteRunResult>) (tests: ITestCase[]) (results: Task<Immutable<RemoteRunResult>>) =
                 let results = results.Result.Value
@@ -113,6 +107,15 @@ module Grains =
                 stream.OnNextAsync(results)
             let bcastTasks = runTasks |> Array.mapi (fun i t -> t.ContinueWith(onFinishedTest stream groups.[i]))
             Task.Factory.ContinueWhenAll(bcastTasks, (fun _ -> stream.OnCompletedAsync())).Unwrap()
+
+        member private t.SendToRunners (runId: string) (tests: ResizeArray<ITestCase[]>) : Task<Immutable<RemoteRunResult>>[] =
+            let factory = base.GrainFactory
+            tests
+            |> ResizeArray.mapToArray (fun tests ->
+                   let runner = factory.GetGrain<IRemoteTestRunner>(Guid.NewGuid())
+                   let wrappedTests = Array.map (fun t -> Xunit1TestCaseProxy(t)) tests
+                   runner.RunXunit1(runId, wrappedTests.AsImmutable())
+               )
 
         member private t.CreateStream() : IAsyncStream<RemoteRunResult> =
             let streamProvider = t.GetStreamProvider("SMSProvider")
@@ -126,7 +129,7 @@ module Grains =
                     let groups = wsBuilder.Build testId
                                  |> Tests.Discover
                                  |> splitIntoGroups
-                    return sendToRunners testId groups
+                    return t.SendToRunners testId groups
                            |> broadcastPartialResults testId stream groups
                 }
                 task.Unwrap()
