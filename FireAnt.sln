@@ -13,6 +13,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Host", "Host\Host.fsproj", 
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Client", "Client\Client.fsproj", "{ABA76FC1-7E4C-45C2-889D-28396500E29D}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Akka.FSharp", "Akka.FSharp\Akka.FSharp.fsproj", "{143019B3-BBBC-4016-A804-48B8E5B2FA1B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{ABA76FC1-7E4C-45C2-889D-28396500E29D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ABA76FC1-7E4C-45C2-889D-28396500E29D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ABA76FC1-7E4C-45C2-889D-28396500E29D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{143019B3-BBBC-4016-A804-48B8E5B2FA1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{143019B3-BBBC-4016-A804-48B8E5B2FA1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{143019B3-BBBC-4016-A804-48B8E5B2FA1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{143019B3-BBBC-4016-A804-48B8E5B2FA1B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,8 +1,8 @@
 ﻿namespace FireAnt
 #nowarn "686" // suppress warnings about createFrom
 
-open Akka
 open Akka.Actor
+open Akka.Routing
 
 open Xunit
 open Xunit.Abstractions
@@ -18,6 +18,58 @@ type IWorkspaceBuilder =
 type ITestTimeRepository =
     abstract member GetPredicted: string -> decimal
     abstract member Store: runId: string * test: string * time: decimal -> unit
+
+// atm its implicitly a stack, but with little bit of effort this could be turned into a queue
+type private HashBag<'a when 'a : equality>() =
+    let set = HashSet()
+    let list = ResizeArray()
+
+    member t.Count = list.Count
+
+    member t.Add a =
+        if set.Add(a) then
+            list.Add(a)
+
+    member t.Remove a =
+        if set.Remove(a) then
+            list.Remove(a)
+        else
+            false
+
+    member t.Take() =
+        let elm = list.[list.Count - 1]
+        let removed = set.Remove(elm)
+        System.Diagnostics.Debug.Assert(removed)
+        list.RemoveAt(list.Count - 1)
+        elm
+
+// This should be made so the newly inserted item is at the end of the queue, atm it's effectively random
+type private MultiRoundRobin<'a when 'a : equality>() =
+    let dict = Dictionary()
+    let list = ResizeArray()
+    [<DefaultValue>] val mutable index: int
+
+    member t.IsEmpty = list.Count = 0
+
+    member t.Push(a: 'a, count: int) : unit =
+        if count > 0 then
+            match dict.TryGetValue(a) with
+            | true, value -> value := !value + count
+            | _, _ ->
+                let count = ref count
+                dict.Add(a, count)
+                list.Add((a, count))
+
+    member t.Pop() : 'a =
+        let current = (t.index % list.Count)
+        let (item, count) = list.[current]
+        decr count
+        if !count = 0 then
+            dict.Remove(item) |> ignore
+            list.RemoveAt(current)
+        else
+            t.index <- (t.index + 1) % list.Count
+        item
 
 module Transport =
     type TestResult = 
@@ -192,8 +244,35 @@ module Transport =
                 member t.Serialize(_) = invalidOp null
                 member t.Deserialize(_) = invalidOp null
 
-module TestRunner =
+module Message =
     open Transport
+
+    module Worker =
+        type Discover = { RunId: string; }
+        type Run = { Id: string; Tests: Surrogate.Xunit1TestCase[] }
+
+    module WorkerSet =
+        type CoordinatedBy() = class end
+
+    module Coordinator =
+        type Start = { Id: string; }
+        type Ready = { Members: IActorRef[] }
+        type GetWorkers = { Count: int }
+
+    module Dispatcher =
+        type Start = { Client: IActorRef; Id: string }
+        type Discovered = { Id: string; Tests: Surrogate.Xunit1TestCase[][] }
+        type PartialResult = { Id: string; Result: RemoteRunResult }
+        type Continue = { Worker: IActorRef }
+
+    module Client =
+        type Started = { Count: int }
+        type PartialResult = { Result: RemoteRunResult }
+        type Finished = class end
+
+module Worker =
+    open Transport
+    module Message = Message.Worker
 
     type private ITestAssemblyFinished with
         member private t.ToSummary() : RunSummary =
@@ -226,38 +305,163 @@ module TestRunner =
                 t.finished <- finished
                 base.Visit(finished)
 
-    module Message =
-        type Run = { RunId: string; Sender: IActorRef; Tests: Surrogate.Xunit1TestCase[] }
-        type SendPartialResult = { Result: Transport.RemoteRunResult }
-
-    type Actor(builder: IWorkspaceBuilder) as t =
+    type Actor private(builder: IWorkspaceBuilder) as t =
         inherit ReceiveActor()
         do
             base.Receive<Message.Run>(Action<Message.Run>(t.OnReceive))
-        static member Path (id: int) : string = sprintf "runner%d" id
+        static member Create(t) = Actor(t)
         static member Configure (props: Props) = props.WithDispatcher("akka.io.pinned-dispatcher")
+        static member Path (id: int) : string = string id
         member private t.OnReceive(msg: Message.Run) =
-            let dll = builder.Build(msg.RunId)
+            let dll = builder.Build(msg.Id)
             let sink = RunListener()
             using (new Xunit.Xunit1(AppDomainSupport.Required, null, dll.FullName)) (fun runner ->
                 runner.Run((msg.Tests :> Surrogate.Xunit1TestCase seq) :?> ITestCase seq, sink)
             )
-            msg.Sender.Tell({ Message.SendPartialResult.Result = sink.ToRemoteRunResult() })
+            Actor.Context.Sender.Tell({ Message.Dispatcher.PartialResult.Id = msg.Id; Message.Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
 
-module TestDispatcher =
-    module Message =
-        type Run = { RunId: string }
-        type PartialResult = TestRunner.Message.SendPartialResult
-        type RunFinished = { RunId: string }
+module WorkerSet =
+    open FireAnt.Akka.FSharp
+    module Message = Message.WorkerSet
+    open Message
 
-    type Actor(timing: ITestTimeRepository) as t =
+    type Actor private(router: IActorRef, builder: IWorkspaceBuilder) as t =
         inherit ReceiveActor()
+        [<DefaultValue>] val mutable children : IActorRef[]
         do
-            base.Receive<Message.Run>(Action<Message.Run>(t.OnReceive))
-            base.Receive<Message.PartialResult>(Action<Message.PartialResult>(t.OnReceive))
-        static member Path : string = "dispatcher"
+            base.Receive<Message.CoordinatedBy>(Action<Message.CoordinatedBy>(t.OnReceive))
         static member Configure (props: Props) = props
-        member private t.OnReceive(msg: Message.Run) =
-            ()
+        static member Path = "runner"
+        override t.PreStart() =
+            let context = Actor.Context
+            t.children <- Array.init (Environment.ProcessorCount) (fun i -> context.ActorOf(Props.create1<Worker.Actor, _>(builder), Worker.Actor.Path (i + 1)))
+            router.Tell({ Message.Coordinator.Ready.Members = t.children })
+        member private t.OnReceive(msg: CoordinatedBy) =
+            let context = Actor.Context
+            context.Sender.Tell({ Message.Coordinator.Ready.Members = t.children })
+
+module Dispatcher =
+    module Message = Message.Dispatcher
+    type DiscoverMessage = Message.Worker.Discover
+    type RunMessage = Message.Worker.Run
+    open Transport
+    open Message
+
+    type Run = { Client: IActorRef; Id: string }
+    type State =
+        | Initialized
+        | WaitForDiscoveryWorker of run: Run
+        | WaitForDiscoveryResult of run: Run
+        | RunTests of run: Run * finished: ResizeArray<RemoteRunResult> * running: int * waiting: Queue<Surrogate.Xunit1TestCase[]>
+
+        member t.IsFinished =
+            match t with
+            | RunTests(_, _, 0, waiting) when waiting.Count = 0 -> true
+            | _ -> false
+
+        member t.Start(ctx: IActorContext, client: IActorRef, id: string) =
+            match t with
+            | Initialized ->
+                ctx.Parent.Tell({ Coordinator.GetWorkers.Count = 1 })
+                State.WaitForDiscoveryWorker({ Client = client; Id = id })
+            | _ -> invalidOp null
+
+        member t.ReceiveLocal(ctx: IActorContext, worker: IActorRef) =
+            match t with
+            | WaitForDiscoveryWorker run ->
+                worker.Tell({ DiscoverMessage.RunId = run.Id })
+                State.WaitForDiscoveryResult(run)
+            | RunTests(run, finished, running, waiting) ->
+                if waiting.Count > 0 then
+                    worker.Tell({ RunMessage.Id = run.Id; RunMessage.Tests = waiting.Dequeue() })
+                    State.RunTests(run, finished, running + 1, waiting)
+                else
+                    ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| worker |] })
+                    invalidOp null
+            | _ ->
+                ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| worker |] })
+                invalidOp null
+
+        member t.ReceiveRemote(ctx: IActorContext, runId: string, tests: Surrogate.Xunit1TestCase[][]) =
+            let state = match t with
+                        | WaitForDiscoveryResult run when run.Id = runId ->
+                            ctx.Parent.Tell({ Message.Coordinator.GetWorkers.Count = tests.Length })
+                            State.RunTests(run = run, finished = ResizeArray(), running = 0, waiting = Queue(tests))
+                        | _ -> t
+            ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| ctx.Sender |] })
+            state
+
+        member t.ReceiveRemote(ctx: IActorContext, runId: string, result: RemoteRunResult) =
+            let state = match t with
+                        | RunTests(run, finished, running, waiting) when run.Id = runId ->
+                            finished.Add(result)
+                            RunTests(run, finished, running - 1, waiting)
+                        | _ -> t
+            ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| ctx.Sender |] })
+            state
+
+    type Actor private(timing: ITestTimeRepository) as t =
+        inherit ReceiveActor()
+        [<DefaultValue>] val mutable state: State
+        do
+            base.Receive<Message.Start>(Action<Message.Start>(t.OnReceive))
+            base.Receive<Message.Continue>(Action<Message.Continue>(t.OnReceive))
+            base.Receive<Message.Discovered>(Action<Message.Discovered>(t.OnReceive))
+            base.Receive<Message.PartialResult>(Action<Message.PartialResult>(t.OnReceive))
+        static member Create(t) = Actor(t)
+        static member Configure (props: Props) = props
+        static member Path = "dispatcher"
+        override t.PreStart() =
+            t.state <- State.Initialized
+        member private t.OnReceive(msg: Message.Start) =
+            t.state <- t.state.Start(Actor.Context, msg.Client, msg.Id)
+        member private t.OnReceive(msg: Message.Continue) =
+            t.state <- t.state.ReceiveLocal(Actor.Context, msg.Worker)
+        member private t.OnReceive(msg: Message.Discovered) = 
+            t.state <- t.state.ReceiveRemote(Actor.Context, msg.Id, msg.Tests)
         member private t.OnReceive(msg: Message.PartialResult) =
-            ()
+            let context = Actor.Context
+            t.state <- t.state.ReceiveRemote(context, msg.Id, msg.Result)
+            if t.state.IsFinished then
+                context.Stop(t.Self)
+
+module Coordinator =
+    open FireAnt.Akka.FSharp
+    module Message = Message.Coordinator
+    open Message
+
+    type Actor private(router: IActorRef, timing: ITestTimeRepository) as t =
+        inherit ReceiveActor()
+        let readyWorkers = HashBag()
+        let readyDispatchers = MultiRoundRobin<IActorRef>()
+        do
+            base.Receive<Message.Ready>(Action<Message.Ready>(t.OnReceive))
+            base.Receive<Message.Start>(Action<Message.Start>(t.OnReceive))
+            base.Receive<Message.GetWorkers>(Action<Message.GetWorkers>(t.OnReceive))
+        static member Create(r, t) = Actor(r,t)
+        static member Configure (props: Props) = props
+        static member Path = "coordinator"
+        override t.PreStart() =
+            router.Tell(Message.WorkerSet.CoordinatedBy())
+        member private t.OnReceive(msg: Message.Ready) =
+            let context = Actor.Context
+            for worker in msg.Members do
+                if not readyDispatchers.IsEmpty then
+                    let dispatcher = readyDispatchers.Pop()
+                    dispatcher.Tell({ Message.Dispatcher.Continue.Worker = worker })
+                else
+                    readyWorkers.Add(worker) |> ignore
+                    context.Watch(worker) |> ignore
+        member private t.OnReceive(msg: Terminated) =
+            let context = Actor.Context
+            readyWorkers.Remove(context.Sender)
+        member private t.OnReceive(msg: Message.Start) =
+            let context = Actor.Context
+            let dispatcher = t.ActorOf<Dispatcher.Actor, _>(timing)
+            dispatcher.Tell({ Message.Dispatcher.Start.Client = context.Sender; Message.Dispatcher.Start.Id = msg.Id })
+        member private t.OnReceive(msg: Message.GetWorkers) =
+            let sender = Actor.Context.Sender
+            let available = min readyWorkers.Count msg.Count
+            for _ in 1..available do 
+                sender.Tell({ Message.Dispatcher.Continue.Worker = readyWorkers.Take() })
+            readyDispatchers.Push(sender, msg.Count - available)

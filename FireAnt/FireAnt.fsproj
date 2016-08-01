@@ -118,6 +118,13 @@
       <HintPath>..\packages\xunit.extensibility.core.2.1.0\lib\portable-net45+win8+wp8+wpa81\xunit.runner.utility.desktop.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Akka.FSharp\Akka.FSharp.fsproj">
+      <Name>Akka.FSharp</Name>
+      <Project>{143019b3-bbbc-4016-a804-48b8e5b2fa1b}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+  </ItemGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
