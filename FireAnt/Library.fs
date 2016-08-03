@@ -256,7 +256,7 @@ module Message =
 
     module Coordinator =
         type Start = { Id: string; }
-        type Ready = { Members: IActorRef[] }
+        type Ready = { Workers: IActorRef[] }
         type GetWorkers = { Count: int }
 
     module Dispatcher =
@@ -325,20 +325,21 @@ module WorkerSet =
     module Message = Message.WorkerSet
     open Message
 
-    type Actor private(router: IActorRef, builder: IWorkspaceBuilder) as t =
+    type Actor private(coordinator: IActorRef, builder: IWorkspaceBuilder) as t =
         inherit ReceiveActor()
         [<DefaultValue>] val mutable children : IActorRef[]
         do
             base.Receive<Message.CoordinatedBy>(Action<Message.CoordinatedBy>(t.OnReceive))
+        static member Create(r, t) = Actor(r, t)
         static member Configure (props: Props) = props
         static member Path = "runner"
         override t.PreStart() =
             let context = Actor.Context
             t.children <- Array.init (Environment.ProcessorCount) (fun i -> context.ActorOf(Props.create1<Worker.Actor, _>(builder), Worker.Actor.Path (i + 1)))
-            router.Tell({ Message.Coordinator.Ready.Members = t.children })
+            coordinator.Tell({ Message.Coordinator.Ready.Workers = t.children })
         member private t.OnReceive(msg: CoordinatedBy) =
             let context = Actor.Context
-            context.Sender.Tell({ Message.Coordinator.Ready.Members = t.children })
+            context.Sender.Tell({ Message.Coordinator.Ready.Workers = t.children })
 
 module Dispatcher =
     module Message = Message.Dispatcher
@@ -376,10 +377,10 @@ module Dispatcher =
                     worker.Tell({ RunMessage.Id = run.Id; RunMessage.Tests = waiting.Dequeue() })
                     State.RunTests(run, finished, running + 1, waiting)
                 else
-                    ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| worker |] })
+                    ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| worker |] })
                     invalidOp null
             | _ ->
-                ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| worker |] })
+                ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| worker |] })
                 invalidOp null
 
         member t.ReceiveRemote(ctx: IActorContext, runId: string, tests: Surrogate.Xunit1TestCase[][]) =
@@ -388,7 +389,7 @@ module Dispatcher =
                             ctx.Parent.Tell({ Message.Coordinator.GetWorkers.Count = tests.Length })
                             State.RunTests(run = run, finished = ResizeArray(), running = 0, waiting = Queue(tests))
                         | _ -> t
-            ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| ctx.Sender |] })
+            ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| ctx.Sender |] })
             state
 
         member t.ReceiveRemote(ctx: IActorContext, runId: string, result: RemoteRunResult) =
@@ -397,7 +398,7 @@ module Dispatcher =
                             finished.Add(result)
                             RunTests(run, finished, running - 1, waiting)
                         | _ -> t
-            ctx.Parent.Tell({ Message.Coordinator.Ready.Members = [| ctx.Sender |] })
+            ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| ctx.Sender |] })
             state
 
     type Actor private(timing: ITestTimeRepository) as t =
@@ -445,7 +446,7 @@ module Coordinator =
             router.Tell(Message.WorkerSet.CoordinatedBy())
         member private t.OnReceive(msg: Message.Ready) =
             let context = Actor.Context
-            for worker in msg.Members do
+            for worker in msg.Workers do
                 if not readyDispatchers.IsEmpty then
                     let dispatcher = readyDispatchers.Pop()
                     dispatcher.Tell({ Message.Dispatcher.Continue.Worker = worker })

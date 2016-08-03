@@ -29,12 +29,8 @@ let main argv =
             system.ActorOf(Props.Empty.WithRouter(ClusterRouterGroup(BroadcastGroup(path), ClusterRouterGroupSettings(1, path, true))))
         let broadcastToWorkerSet = clusterBroadcastTo(sprintf "/user/%s" WorkerSet.Actor.Path)
         system.ActorOf(ClusterSingletonManager.Props(Props.create2<Coordinator.Actor, _, _>(broadcastToWorkerSet, NullTestTimeRepository()), ClusterSingletonManagerSettings.Create(system)), Coordinator.Actor.Path) |> ignore
-        System.actorOf2<Coordinator.Actor, _, _> system (broadcastToWorkerSet, NullTestTimeRepository()) |> ignore
-        //let broadcastToRunner = clusterBroadcastTo(sprintf "/user/%s" WorkerSet.Actor.Path)
-        //let broadcastToDispatcher = clusterBroadcastTo(sprintf "/user/%s" Dispatcher.Actor.Path)
-        //createActor<WorkerSet.Actor> system (fun () -> Props.CreateBy<RunnerSetProducer>()) |> ignore
-        //system.ActorOf(Props.CreateBy<RunnerSetProducer>(broadcastToDispatcher) |> WorkerSet.Actor.Configure, WorkerSet.Actor.Path) |> ignore
-        //system.ActorOf(Props.CreateBy<DispatcherProducer>(broadcastToRunner) |> Dispatcher.Actor.Configure, Dispatcher.Actor.Path) |> ignore
-        //while Console.ReadKey().Key <> ConsoleKey.Escape do ()
+        let proxy = system.ActorOf(ClusterSingletonProxy.Props("/user/"+ Coordinator.Actor.Path, ClusterSingletonProxySettings.Create(system)))
+        System.actorOf2<WorkerSet.Actor, _, _> system (proxy, NullWorkspaceBuilder()) |> ignore
+        while Console.ReadKey().Key <> ConsoleKey.Escape do ()
     )
     0
