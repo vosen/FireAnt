@@ -26,11 +26,11 @@ let main argv =
     using(ActorSystem.Create("FireAnt")) (fun system ->
         let clusterBroadcastTo (path: string) =
             let path = [| path |]
-            system.ActorOf(Props.Empty.WithRouter(ClusterRouterGroup(BroadcastGroup(path), ClusterRouterGroupSettings(1, path, true))))
+            system.ActorOf(Props.Empty.WithRouter(ClusterRouterGroup(BroadcastGroup(path), ClusterRouterGroupSettings(1000, path, true))))
         let broadcastToWorkerSet = clusterBroadcastTo(sprintf "/user/%s" WorkerSet.Actor.Path)
         system.ActorOf(ClusterSingletonManager.Props(Props.create2<Coordinator.Actor, _, _>(broadcastToWorkerSet, NullTestTimeRepository()), ClusterSingletonManagerSettings.Create(system)), Coordinator.Actor.Path) |> ignore
         let proxy = system.ActorOf(ClusterSingletonProxy.Props("/user/"+ Coordinator.Actor.Path, ClusterSingletonProxySettings.Create(system)))
-        System.actorOf2<WorkerSet.Actor, _, _> system (proxy, NullWorkspaceBuilder()) |> ignore
+        System.actorOf2<WorkerSet.Actor, _, _>(system, proxy, NullWorkspaceBuilder()) |> ignore
         while Console.ReadKey().Key <> ConsoleKey.Escape do ()
     )
     0

@@ -266,11 +266,12 @@ module Message =
         type Continue = { Worker: IActorRef }
 
     module Client =
-        type Started = { Count: int }
+        type Started() = class end
         type PartialResult = { Result: RemoteRunResult }
-        type Finished = class end
+        type Finished() = class end
 
 module Worker =
+    open System.Threading.Tasks
     open Transport
     module Message = Message.Worker
 
@@ -308,17 +309,32 @@ module Worker =
     type Actor private(builder: IWorkspaceBuilder) as t =
         inherit ReceiveActor()
         do
+            base.Receive<Message.Discover>(Action<Message.Discover>(t.OnReceive))
             base.Receive<Message.Run>(Action<Message.Run>(t.OnReceive))
+        let queue = TaskQueue(t.Self)
         static member Create(t) = Actor(t)
-        static member Configure (props: Props) = props.WithDispatcher("akka.io.pinned-dispatcher")
+        static member Configure (props: Props) = props
         static member Path (id: int) : string = string id
-        member private t.OnReceive(msg: Message.Run) =
-            let dll = builder.Build(msg.Id)
-            let sink = RunListener()
-            using (new Xunit.Xunit1(AppDomainSupport.Required, null, dll.FullName)) (fun runner ->
-                runner.Run((msg.Tests :> Surrogate.Xunit1TestCase seq) :?> ITestCase seq, sink)
+        member private t.OnReceive(msg: Message.Discover) =
+            let sender = Actor.Context.Sender
+            let builder = builder
+            queue.Enqueue(fun () ->
+                let dll = builder.Build(msg.RunId)
+                let tests = Tests.Discover(dll)
+                let splitTests = tests |> Seq.map (Surrogate.Xunit1TestCase >> Array.singleton) |> Seq.toArray
+                sender.Tell({ Message.Dispatcher.Discovered.Id = msg.RunId; Message.Dispatcher.Discovered.Tests = splitTests })
             )
-            Actor.Context.Sender.Tell({ Message.Dispatcher.PartialResult.Id = msg.Id; Message.Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
+        member private t.OnReceive(msg: Message.Run) =
+            let sender = Actor.Context.Sender
+            let builder = builder
+            queue.Enqueue(fun () ->
+                let dll = builder.Build(msg.Id)
+                let sink = RunListener()
+                using (new Xunit.Xunit1(AppDomainSupport.Required, null, dll.FullName)) (fun runner ->
+                    runner.Run((msg.Tests :> Surrogate.Xunit1TestCase seq) :?> ITestCase seq, sink)
+                )
+                sender.Tell({ Message.Dispatcher.PartialResult.Id = msg.Id; Message.Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
+            )
 
 module WorkerSet =
     open FireAnt.Akka.FSharp
@@ -343,10 +359,11 @@ module WorkerSet =
 
 module Dispatcher =
     module Message = Message.Dispatcher
+    module Client = Message.Client
+    module Coordinator = Message.Coordinator
     type DiscoverMessage = Message.Worker.Discover
     type RunMessage = Message.Worker.Run
     open Transport
-    open Message
 
     type Run = { Client: IActorRef; Id: string }
     type State =
@@ -354,6 +371,13 @@ module Dispatcher =
         | WaitForDiscoveryWorker of run: Run
         | WaitForDiscoveryResult of run: Run
         | RunTests of run: Run * finished: ResizeArray<RemoteRunResult> * running: int * waiting: Queue<Surrogate.Xunit1TestCase[]>
+
+        member t.Client : IActorRef =
+            match t with
+            | Initialized -> invalidOp null
+            | WaitForDiscoveryWorker({ Client = client; }) -> client
+            | WaitForDiscoveryResult({ Client = client; }) -> client
+            | RunTests({ Client = client; }, _, _, _) -> client
 
         member t.IsFinished =
             match t with
@@ -364,6 +388,7 @@ module Dispatcher =
             match t with
             | Initialized ->
                 ctx.Parent.Tell({ Coordinator.GetWorkers.Count = 1 })
+                client.Tell(Message.Client.Started())
                 State.WaitForDiscoveryWorker({ Client = client; Id = id })
             | _ -> invalidOp null
 
@@ -396,7 +421,8 @@ module Dispatcher =
             let state = match t with
                         | RunTests(run, finished, running, waiting) when run.Id = runId ->
                             finished.Add(result)
-                            RunTests(run, finished, running - 1, waiting)
+                            run.Client.Tell({ Client.PartialResult.Result = result })
+                            State.RunTests(run, finished, running - 1, waiting)
                         | _ -> t
             ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| ctx.Sender |] })
             state
@@ -424,6 +450,7 @@ module Dispatcher =
             let context = Actor.Context
             t.state <- t.state.ReceiveRemote(context, msg.Id, msg.Result)
             if t.state.IsFinished then
+                t.state.Client.Tell(Client.Finished())
                 context.Stop(t.Self)
 
 module Coordinator =
@@ -452,10 +479,6 @@ module Coordinator =
                     dispatcher.Tell({ Message.Dispatcher.Continue.Worker = worker })
                 else
                     readyWorkers.Add(worker) |> ignore
-                    context.Watch(worker) |> ignore
-        member private t.OnReceive(msg: Terminated) =
-            let context = Actor.Context
-            readyWorkers.Remove(context.Sender)
         member private t.OnReceive(msg: Message.Start) =
             let context = Actor.Context
             let dispatcher = t.ActorOf<Dispatcher.Actor, _>(timing)

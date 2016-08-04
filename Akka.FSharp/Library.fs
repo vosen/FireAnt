@@ -28,10 +28,10 @@ module FSharp =
         let inline actorOf< ^T when ^T :> ActorBase and ^T : (static member Create: unit ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)> (system: ActorSystem) =
             system.ActorOf((^T: (static member Configure : Props -> Props) Props.CreateBy<FuncActorProducer< ^T>>(fun () -> (^T: (static member Create: unit ->  ^T) ()))), (^T: (static member get_Path: unit -> string) ()))
 
-        let inline actorOf1< ^T, ^U when ^T :> ActorBase and ^T : (static member Create: ^U ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)> (system: ActorSystem) (u: ^U) =
+        let inline actorOf1< ^T, ^U when ^T :> ActorBase and ^T : (static member Create: ^U ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)> (system: ActorSystem, u: ^U) =
             system.ActorOf((^T: (static member Configure : Props -> Props) Props.CreateBy<FuncActorProducer< ^T>>(fun () -> (^T: (static member Create: ^U ->  ^T) u))), (^T: (static member get_Path: unit -> string) ()))
 
-        let inline actorOf2< ^T, ^U, ^V when ^T :> ActorBase and ^T : (static member Create: ^U * ^V ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)> (system: ActorSystem) (u: ^U, v: ^V) =
+        let inline actorOf2< ^T, ^U, ^V when ^T :> ActorBase and ^T : (static member Create: ^U * ^V ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)> (system: ActorSystem, u: ^U, v: ^V) =
             system.ActorOf((^T: (static member Configure : Props -> Props) Props.CreateBy<FuncActorProducer< ^T>>(fun () -> (^T: (static member Create: ^U * ^V ->  ^T) (u,v)))), (^T: (static member get_Path: unit -> string) ()))
 
     module Props =

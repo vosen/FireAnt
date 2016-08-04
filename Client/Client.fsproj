@@ -68,6 +68,10 @@
       <HintPath>..\packages\Akka.Cluster.1.1.1\lib\net45\Akka.Cluster.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="Akka.Cluster.Tools">
+      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\Akka.Cluster.Tools.1.1.1.28-beta\lib\net45\Akka.Cluster.Tools.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Akka.Remote">
       <HintPath>..\packages\Akka.Remote.1.1.1\lib\net45\Akka.Remote.dll</HintPath>
       <Private>True</Private>
@@ -103,6 +107,11 @@
     </Reference>
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
+    <ProjectReference Include="..\Akka.FSharp\Akka.FSharp.fsproj">
+      <Name>Akka.FSharp</Name>
+      <Project>{143019b3-bbbc-4016-a804-48b8e5b2fa1b}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\FireAnt\FireAnt.fsproj">
       <Name>FireAnt</Name>
       <Project>{0a5b2d20-308c-4599-9f99-c13f98173d9f}</Project>
