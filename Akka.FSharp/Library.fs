@@ -14,6 +14,19 @@ module FSharp =
                 | :? IDisposable as actor -> actor.Dispose()
                 | _ -> ()
 
+    [<AbstractClass>]
+    type AsyncActor() =
+        inherit ReceiveActor()
+        // for some reason  this trips up type inference
+        // if defined and used in the same actor type
+        member t.ReceiveRespond<'T, 'U>(f: 'T * ('U -> unit) -> unit) =
+            t.Receive<'T>(Action<'T>(fun a ->
+                let ctx = (t :> IInternalActor).ActorContext
+                let self = ctx.Self
+                let sender = ctx.Sender
+                f (a, (fun b -> self.Tell((sender, b))))))
+            t.Receive<(IActorRef * 'U)>(Action<(IActorRef * 'U)>(fun (sender, b) -> sender.Tell(b)))
+
     type IInternalActor with
         member inline t.ActorOf< ^T when ^T :> ActorBase and ^T : (static member Create: unit ->  ^T) and ^T: (static member Configure : Props -> Props) and ^T: (static member get_Path: unit -> string)>() =
             t.ActorContext.ActorOf((^T: (static member Configure : Props -> Props) Props.CreateBy<FuncActorProducer< ^T>>(fun () -> (^T: (static member Create: unit ->  ^T) ()))), (^T: (static member get_Path: unit -> string) ()))

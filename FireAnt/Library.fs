@@ -272,8 +272,11 @@ module Message =
 
 module Worker =
     open System.Threading.Tasks
+    open FireAnt.Akka.FSharp
+
     open Transport
     module Message = Message.Worker
+    module Dispatcher = Message.Dispatcher
 
     type private ITestAssemblyFinished with
         member private t.ToSummary() : RunSummary =
@@ -307,25 +310,25 @@ module Worker =
                 base.Visit(finished)
 
     type Actor private(builder: IWorkspaceBuilder) as t =
-        inherit ReceiveActor()
+        inherit AsyncActor()
         do
-            base.Receive<Message.Discover>(Action<Message.Discover>(t.OnReceive))
-            base.Receive<Message.Run>(Action<Message.Run>(t.OnReceive))
+            base.ReceiveRespond(t.OnReceiveRun)
+            base.ReceiveRespond(t.OnReceiveDiscover)
         let queue = TaskQueue(t.Self)
         static member Create(t) = Actor(t)
         static member Configure (props: Props) = props
         static member Path (id: int) : string = string id
-        member private t.OnReceive(msg: Message.Discover) =
-            let sender = Actor.Context.Sender
+
+        member private t.OnReceiveDiscover (msg: Message.Discover, callback: Dispatcher.Discovered -> unit) =
             let builder = builder
             queue.Enqueue(fun () ->
                 let dll = builder.Build(msg.RunId)
                 let tests = Tests.Discover(dll)
                 let splitTests = tests |> Seq.map (Surrogate.Xunit1TestCase >> Array.singleton) |> Seq.toArray
-                sender.Tell({ Message.Dispatcher.Discovered.Id = msg.RunId; Message.Dispatcher.Discovered.Tests = splitTests })
+                callback({ Dispatcher.Discovered.Id = msg.RunId; Dispatcher.Discovered.Tests = splitTests })
             )
-        member private t.OnReceive(msg: Message.Run) =
-            let sender = Actor.Context.Sender
+
+        member private t.OnReceiveRun (msg: Message.Run, callback: Dispatcher.PartialResult -> unit) : unit =
             let builder = builder
             queue.Enqueue(fun () ->
                 let dll = builder.Build(msg.Id)
@@ -333,7 +336,7 @@ module Worker =
                 using (new Xunit.Xunit1(AppDomainSupport.Required, null, dll.FullName)) (fun runner ->
                     runner.Run((msg.Tests :> Surrogate.Xunit1TestCase seq) :?> ITestCase seq, sink)
                 )
-                sender.Tell({ Message.Dispatcher.PartialResult.Id = msg.Id; Message.Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
+                callback({ Dispatcher.PartialResult.Id = msg.Id; Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
             )
 
 module WorkerSet =
