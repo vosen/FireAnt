@@ -12,7 +12,7 @@ open System.Threading
 module Client =
     open FireAnt.Message
 
-    type Actor private(proxy: IActorRef, finished: ManualResetEventSlim) as t =
+    type Actor private(proxy: IActorRef) as t =
         inherit ReceiveActor()
         do
             base.Receive<Client.Started>(Action<Client.Started>(t.OnReceive))
@@ -20,10 +20,9 @@ module Client =
             base.Receive<Client.PartialResult>(Action<Client.PartialResult>(t.OnReceive))
             base.Receive<Client.Finished>(Action<Client.Finished>(t.OnReceive))
         let logger = Logging.GetLogger(Actor.Context)
-        static member Create(r, t) = Actor(r,t)
+        static member Create(p) = Actor(p)
         static member Configure (props: Props) = props
         static member Path = "client"
-        member t.Finished = finished
         member t.OnReceive(msg: Client.Started) =
             logger.Info("[STARTED]")
         member t.OnReceive(msg: ClusterEvent.MemberUp) =
@@ -39,16 +38,18 @@ module Client =
             logger.Info(sprintf "[%s] for [%s] in %gs" output result.Name result.Time)
         member t.OnReceive(msg: Client.Finished) =
             logger.Info("[FINISHED]")
-            finished.Set()
 
 [<EntryPoint>]
-let main argv =
+let main _ =
     using(ActorSystem.Create("FireAnt")) (fun system ->
-        use finished = new ManualResetEventSlim()
         let proxy = system.ActorOf(ClusterSingletonProxy.Props("/user/"+ Coordinator.Actor.Path, ClusterSingletonProxySettings.Create(system)))
-        let client = System.actorOf2<Client.Actor, _, _> (system, proxy, finished)
+        let client = System.actorOf1<Client.Actor, _> (system, proxy)
         let cluster = Cluster.Get(system)
         cluster.Subscribe(client, ClusterEvent.SubscriptionInitialStateMode.InitialStateAsEvents, [| typeof<ClusterEvent.MemberUp> |])
-        while Console.ReadKey().Key <> ConsoleKey.Escape do ()
+        while Console.ReadKey(true).Key <> ConsoleKey.Escape do ()
+        use leftCluster = new ManualResetEventSlim()
+        cluster.RegisterOnMemberRemoved(fun () -> leftCluster.Set())
+        cluster.Leave(cluster.SelfAddress)
+        leftCluster.Wait()
     )
     0

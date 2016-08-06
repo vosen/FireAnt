@@ -16,8 +16,10 @@ type IWorkspaceBuilder =
     abstract member Build: string -> FileInfo
 
 type ITestTimeRepository =
-    abstract member GetPredicted: string -> decimal
-    abstract member Store: runId: string * test: string * time: decimal -> unit
+    abstract member GetPredicted: string -> decimal option
+
+type ISplitStrategy =
+    abstract member Split: IReadOnlyList<(ITestCase * decimal option)> -> IReadOnlyList<IReadOnlyList<ITestCase>>
 
 // atm its implicitly a stack, but with little bit of effort this could be turned into a queue
 type private HashBag<'a when 'a : equality>() =
@@ -309,13 +311,13 @@ module Worker =
                 t.finished <- finished
                 base.Visit(finished)
 
-    type Actor private(builder: IWorkspaceBuilder) as t =
+    type Actor private(builder: IWorkspaceBuilder, timing: ITestTimeRepository, splitter: ISplitStrategy) as t =
         inherit AsyncActor()
         do
             base.ReceiveRespond(t.OnReceiveRun)
             base.ReceiveRespond(t.OnReceiveDiscover)
         let queue = TaskQueue(t.Self)
-        static member Create(t) = Actor(t)
+        static member Create(b, t, s) = Actor(b, t, s)
         static member Configure (props: Props) = props
         static member Path (id: int) : string = string id
 
@@ -324,7 +326,8 @@ module Worker =
             queue.Enqueue(fun () ->
                 let dll = builder.Build(msg.RunId)
                 let tests = Tests.Discover(dll)
-                let splitTests = tests |> Seq.map (Surrogate.Xunit1TestCase >> Array.singleton) |> Seq.toArray
+                let splitTests = splitter.Split(tests |> Seq.map(fun t -> (t, timing.GetPredicted(t.DisplayName))) |> ResizeArray)
+                let splitTests = splitTests |> (Seq.map ((Seq.map Surrogate.Xunit1TestCase) >> Seq.toArray) >> Seq.toArray)
                 callback({ Dispatcher.Discovered.Id = msg.RunId; Dispatcher.Discovered.Tests = splitTests })
             )
 
@@ -344,17 +347,17 @@ module WorkerSet =
     module Message = Message.WorkerSet
     open Message
 
-    type Actor private(coordinator: IActorRef, builder: IWorkspaceBuilder) as t =
+    type Actor private(coordinator: IActorRef, builder: IWorkspaceBuilder, timing: ITestTimeRepository, splitter: ISplitStrategy) as t =
         inherit ReceiveActor()
         [<DefaultValue>] val mutable children : IActorRef[]
         do
             base.Receive<Message.CoordinatedBy>(Action<Message.CoordinatedBy>(t.OnReceive))
-        static member Create(r, t) = Actor(r, t)
+        static member Create(c,b,t,s) = Actor(c,b,t,s)
         static member Configure (props: Props) = props
         static member Path = "runner"
         override t.PreStart() =
             let context = Actor.Context
-            t.children <- Array.init (Environment.ProcessorCount) (fun i -> context.ActorOf(Props.create1<Worker.Actor, _>(builder), Worker.Actor.Path (i + 1)))
+            t.children <- Array.init (Environment.ProcessorCount) (fun i -> context.ActorOf(Props.create3<Worker.Actor, _, _, _>(builder, timing, splitter), Worker.Actor.Path (i + 1)))
             coordinator.Tell({ Message.Coordinator.Ready.Workers = t.children })
         member private t.OnReceive(msg: CoordinatedBy) =
             let context = Actor.Context

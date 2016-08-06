@@ -38,7 +38,7 @@ namespace Lighthouse
 
             var remoteConfig = clusterConfig.GetConfig("akka.remote");
             ipAddress = ipAddress ??
-                        remoteConfig.GetString("helios.tcp.public-hostname") ??
+                        remoteConfig.GetString("helios.tcp.hostname") ??
                         "127.0.0.1"; //localhost as a final default
             int port = specifiedPort ?? remoteConfig.GetInt("helios.tcp.port");
 
@@ -55,7 +55,7 @@ namespace Lighthouse
             injectedClusterConfigString += "]";
 
             var finalConfig = ConfigurationFactory.ParseString(
-                string.Format(@"akka.remote.helios.tcp.public-hostname = {0} 
+                string.Format(@"akka.remote.helios.tcp.hostname = {0} 
 akka.remote.helios.tcp.port = {1}", ipAddress, port))
                 .WithFallback(ConfigurationFactory.ParseString(injectedClusterConfigString))
                 .WithFallback(clusterConfig);
