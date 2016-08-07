@@ -28,7 +28,7 @@ type SimpleTestTimeRepository(cfg: Config) =
     let times = 
         let lines = File.ReadAllLines(cfg.GetString("fireant.test-times"))
         lines
-        |> Array.map(fun line -> line.Split([| "\r\n"; "\n" |], StringSplitOptions.None))
+        |> Array.map(fun line -> line.Split([| "\t" |], StringSplitOptions.None))
         |> Array.map(fun [| name; time |] -> (name, decimal time))
         |> Map.ofArray
     interface ITestTimeRepository with
