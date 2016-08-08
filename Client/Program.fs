@@ -29,13 +29,17 @@ module Client =
             if msg.Member.Address = Cluster.Get(Actor.Context.System).SelfAddress then
                 proxy.Tell({ Message.Coordinator.Start.Id = "" })
         member t.OnReceive(msg: Client.PartialResult) =
-            let result = msg.Result.TestSummaries.[0]
-            logger.Info(sprintf "%s" result.Output)
-            let output = match result.Result with
-                         | TestResult.Failed -> "FAILURE"
-                         | TestResult.Passed -> "SUCCESS"
-                         | TestResult.Skipped _ -> "SKIPPED"
-            logger.Info(sprintf "[%s] for [%s] in %gs" output result.Name result.Time)
+            for result in msg.Result.TestSummaries do
+                if not <| String.IsNullOrEmpty result.Output then
+                    logger.Info(sprintf "%s" result.Output)
+                match result.Result with
+                | TestResult.Error(tests, msgs, stacks) ->
+                    logger.Info(sprintf "[ERROR] for [%s]" (String.Join(",", tests)))
+                    logger.Info(sprintf "        %s" (String.Join(",", msgs)))
+                    logger.Info(sprintf "        %s" (String.Join(",", stacks)))
+                | TestResult.Failed name -> logger.Info(sprintf "[FAILURE] for [%s] in %gs" name result.Time)
+                | TestResult.Passed name -> logger.Info(sprintf "[SUCCESS] for [%s] in %gs" name result.Time)
+                | TestResult.Skipped(name, _) -> logger.Info(sprintf "[SKIPPED] for [%s] in %gs" name result.Time)
         member t.OnReceive(msg: Client.Finished) =
             logger.Info("[FINISHED]")
 

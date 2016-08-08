@@ -69,7 +69,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="Akka.Cluster.Tools">
-      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\Akka.Cluster.Tools.1.1.1.28-beta\lib\net45\Akka.Cluster.Tools.dll</HintPath>
+      <HintPath>..\packages\Akka.Cluster.Tools.1.1.1.28-beta\lib\net45\Akka.Cluster.Tools.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Akka.Remote">

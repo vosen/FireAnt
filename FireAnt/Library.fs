@@ -74,22 +74,31 @@ type private MultiRoundRobin<'a when 'a : equality>() =
         item
 
 module Transport =
-    type TestResult = 
-    | Passed
-    | Failed
-    | Skipped of reason: string
+    type TestResult =
+    | Error of tests: string[] * messages: string[] * stackTraces: string[]
+    | Passed of name: string
+    | Failed of name: string
+    | Skipped of name: string * reason: string
 
     type TestCaseSummary =
      {
-        Name: string
         Result: TestResult
         Time: decimal
         Output: string
      }
      with
-        static member Create (output: ITestResultMessage) (result: TestResult) : TestCaseSummary =
+        static member Create (error: IErrorMessage) : TestCaseSummary =
+            let tests = error.TestCases
+                        |> Seq.map (fun tc -> tc.DisplayName)
+                        |> Seq.toArray
             {
-                Name = output.TestCase.DisplayName
+                Result = TestResult.Error(tests=tests, messages=error.Messages, stackTraces=error.StackTraces)
+                Time = 0m
+                Output = null
+            }
+
+        static member Create (output: ITestResultMessage, result: TestResult) : TestCaseSummary =
+            {
                 Result = result
                 Time = output.ExecutionTime
                 Output = output.Output
@@ -285,26 +294,30 @@ module Worker =
             RunSummary(Failed  = t.TestsFailed, Skipped = t.TestsSkipped, Time = t.ExecutionTime, Total = t.TestsFailed + t.TestsRun + t.TestsSkipped)
 
     type private RunListener() =
-        let tests = ResizeArray()
+        let finishedTests = ResizeArray()
         [<DefaultValue>] val mutable finished: ITestAssemblyFinished
 
         member t.ToRemoteRunResult() : RemoteRunResult =
             {
                 RunSummary = t.finished.ToSummary()
-                TestSummaries = tests
+                TestSummaries = finishedTests
             }
 
         inherit TestMessageVisitor()
+            override t.Visit(msg: IErrorMessage) : bool =
+                finishedTests.Add(TestCaseSummary.Create msg)
+                base.Visit(msg)
+
             override t.Visit(finish: ITestPassed) : bool =
-                tests.Add(TestCaseSummary.Create finish TestResult.Passed)
+                finishedTests.Add(TestCaseSummary.Create(finish, TestResult.Passed finish.TestCase.DisplayName))
                 base.Visit(finish)
 
             override t.Visit(skipped: ITestSkipped) : bool =
-                tests.Add(TestCaseSummary.Create skipped (TestResult.Skipped skipped.Reason))
+                finishedTests.Add(TestCaseSummary.Create(skipped, (TestResult.Skipped(skipped.TestCase.DisplayName, skipped.Reason))))
                 base.Visit(skipped)
 
             override t.Visit(fail: ITestFailed) : bool =
-                tests.Add(TestCaseSummary.Create fail TestResult.Failed)
+                finishedTests.Add(TestCaseSummary.Create(fail, TestResult.Failed fail.TestCase.DisplayName))
                 base.Visit(fail)
 
             override t.Visit(finished: ITestAssemblyFinished) : bool =

@@ -61,7 +61,7 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Akka">
-      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\Akka.1.1.1\lib\net45\Akka.dll</HintPath>
+      <HintPath>..\packages\Akka.1.1.1\lib\net45\Akka.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
