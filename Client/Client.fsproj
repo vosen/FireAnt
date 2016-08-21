@@ -60,6 +60,11 @@
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Types\Types.csproj">
+      <Name>Types</Name>
+      <Project>{1cdfcd4a-253a-4240-b9e7-2010db28d712}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <Reference Include="Akka">
       <HintPath>..\packages\Akka.1.1.1\lib\net45\Akka.dll</HintPath>
       <Private>True</Private>
@@ -89,7 +94,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="Helios">
-      <HintPath>..\packages\Helios.2.1.2\lib\net45\Helios.dll</HintPath>
+      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\Helios.2.1.3\lib\net45\Helios.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
@@ -119,18 +124,6 @@
     </ProjectReference>
     <Reference Include="Wire">
       <HintPath>..\packages\Wire.0.0.6\lib\Wire.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="xunit.abstractions">
-      <HintPath>..\packages\xunit.abstractions.2.0.0\lib\net35\xunit.abstractions.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="xunit.core">
-      <HintPath>..\packages\xunit.extensibility.core.2.1.0\lib\dotnet\xunit.core.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="xunit.execution.desktop">
-      <HintPath>..\packages\xunit.extensibility.execution.2.1.0\lib\net45\xunit.execution.desktop.dll</HintPath>
       <Private>True</Private>
     </Reference>
   </ItemGroup>

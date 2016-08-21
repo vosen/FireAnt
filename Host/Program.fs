@@ -6,13 +6,13 @@ open System.Threading
 
 open FireAnt
 open FireAnt.Akka.FSharp
+open FireAnt.Transport
 open Akka.Actor
 open Akka.Cluster
 open Akka.Cluster.Routing
 open Akka.Cluster.Tools.Singleton
 open Akka.Configuration
 open Akka.Routing
-open Xunit.Abstractions
 
 type TrivialWorkspaceBuilder(cfg: Config) =
     interface IWorkspaceBuilder with
@@ -21,7 +21,7 @@ type TrivialWorkspaceBuilder(cfg: Config) =
 
 type NullTestTimeRepository() =
     interface ITestTimeRepository with
-        member t.GetPredicted(name: string) : decimal option =
+        member t.GetPredicted(test: TestCase) : decimal option =
             None
 
 type SimpleTestTimeRepository(cfg: Config) =
@@ -32,26 +32,26 @@ type SimpleTestTimeRepository(cfg: Config) =
         |> Array.map(fun [| name; time |] -> (name, decimal time))
         |> Map.ofArray
     interface ITestTimeRepository with
-        member t.GetPredicted(name: string) : decimal option =
-            Map.tryFind name times
+        member t.GetPredicted(test: TestCase) : decimal option =
+            Map.tryFind (sprintf "%s.%s" test.Type test.Method) times
 
 type TrivialSplitStrategy() =
     static let readOnly (a: 'a[]) : IReadOnlyList<'a> =
         a :> IReadOnlyList<'a>
     interface ISplitStrategy with
-        member t.Split(tests: IReadOnlyList<(ITestCase * decimal option)>) : IReadOnlyList<IReadOnlyList<ITestCase>> =
+        member t.Split(tests: IReadOnlyList<(TestCase * decimal option)>) : IReadOnlyList<IReadOnlyList<TestCase>> =
             tests
             |> (Seq.map (fst >> Array.singleton >> readOnly))
             |> Seq.toArray
             |> readOnly
 
-type SplitBucket(time: decimal, tests: ResizeArray<ITestCase>) as t =
+type SplitBucket(time: decimal, tests: ResizeArray<TestCase>) as t =
     [<DefaultValue>] val mutable Time: decimal
-    [<DefaultValue>] val mutable Tests: ResizeArray<ITestCase>
+    [<DefaultValue>] val mutable Tests: ResizeArray<TestCase>
     do
         t.Time <- time
         t.Tests <- tests
-    member t.Add(time: decimal, test: ITestCase) =
+    member t.Add(time: decimal, test: TestCase) =
         t.Time <- t.Time + time
         t.Tests.Add(test)
 
@@ -66,7 +66,7 @@ type BucketComparer() =
 type SimpleSplitStrategy() =
     static let timeTarget : decimal = 30M
     interface ISplitStrategy with
-        member t.Split(tests: IReadOnlyList<(ITestCase * decimal option)>) : IReadOnlyList<IReadOnlyList<ITestCase>> =
+        member t.Split(tests: IReadOnlyList<(TestCase * decimal option)>) : IReadOnlyList<IReadOnlyList<TestCase>> =
             let totalTime = tests
                             |> Seq.map (snd >> Option.get)
                             |> Seq.sum
@@ -78,7 +78,7 @@ type SimpleSplitStrategy() =
             for (test, time) in tests do
                 times.[0].Add(time.Value, test)
                 Array.Sort<_>(times, comparer)
-            times |> Array.map (fun (b: SplitBucket) -> b.Tests :> IReadOnlyList<ITestCase>) :> IReadOnlyList<IReadOnlyList<ITestCase>>
+            times |> Array.map (fun (b: SplitBucket) -> b.Tests :> IReadOnlyList<TestCase>) :> IReadOnlyList<IReadOnlyList<TestCase>>
 
 [<EntryPoint>]
 let main argv =

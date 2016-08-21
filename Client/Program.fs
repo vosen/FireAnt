@@ -29,17 +29,11 @@ module Client =
             if msg.Member.Address = Cluster.Get(Actor.Context.System).SelfAddress then
                 proxy.Tell({ Message.Coordinator.Start.Id = "" })
         member t.OnReceive(msg: Client.PartialResult) =
-            for result in msg.Result.TestSummaries do
-                if not <| String.IsNullOrEmpty result.Output then
-                    logger.Info(sprintf "%s" result.Output)
-                match result.Result with
-                | TestResult.Error(tests, msgs, stacks) ->
-                    logger.Info(sprintf "[ERROR] for [%s]" (String.Join(",", tests)))
-                    logger.Info(sprintf "        %s" (String.Join(",", msgs)))
-                    logger.Info(sprintf "        %s" (String.Join(",", stacks)))
-                | TestResult.Failed name -> logger.Info(sprintf "[FAILURE] for [%s] in %gs" name result.Time)
-                | TestResult.Passed name -> logger.Info(sprintf "[SUCCESS] for [%s] in %gs" name result.Time)
-                | TestResult.Skipped(name, _) -> logger.Info(sprintf "[SKIPPED] for [%s] in %gs" name result.Time)
+            let result = msg.Result
+            match result.Result with
+            | TestResult.Pass -> logger.Info(sprintf "[SUCCESS] for [%s] in %gs" result.DisplayName result.Time)
+            | TestResult.Fail -> logger.Info(sprintf "[FAILURE] for [%s] in %gs:\n%s: %s\n%s" result.DisplayName result.Time result.ExceptionType result.ExceptionMessage result.ExceptionMessage)
+            | TestResult.Skip -> logger.Info(sprintf "[SKIPPED] for [%s]" result.DisplayName)
         member t.OnReceive(msg: Client.Finished) =
             logger.Info("[FINISHED]")
 

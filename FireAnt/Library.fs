@@ -4,22 +4,10 @@
 open Akka.Actor
 open Akka.Routing
 
-open Xunit
-open Xunit.Abstractions
-open Xunit.Sdk
-
 open System
 open System.IO
 open System.Collections.Generic
-
-type IWorkspaceBuilder =
-    abstract member Build: string -> FileInfo
-
-type ITestTimeRepository =
-    abstract member GetPredicted: string -> decimal option
-
-type ISplitStrategy =
-    abstract member Split: IReadOnlyList<(ITestCase * decimal option)> -> IReadOnlyList<IReadOnlyList<ITestCase>>
+open FireAnt.Transport
 
 // atm its implicitly a stack, but with little bit of effort this could be turned into a queue
 type private HashBag<'a when 'a : equality>() =
@@ -31,12 +19,6 @@ type private HashBag<'a when 'a : equality>() =
     member t.Add a =
         if set.Add(a) then
             list.Add(a)
-
-    member t.Remove a =
-        if set.Remove(a) then
-            list.Remove(a)
-        else
-            false
 
     member t.Take() =
         let elm = list.[list.Count - 1]
@@ -73,194 +55,10 @@ type private MultiRoundRobin<'a when 'a : equality>() =
             t.index <- (t.index + 1) % list.Count
         item
 
-module Transport =
-    type TestResult =
-    | Error of tests: string[] * messages: string[] * stackTraces: string[]
-    | Passed of name: string
-    | Failed of name: string
-    | Skipped of name: string * reason: string
-
-    type TestCaseSummary =
-     {
-        Result: TestResult
-        Time: decimal
-        Output: string
-     }
-     with
-        static member Create (error: IErrorMessage) : TestCaseSummary =
-            let tests = error.TestCases
-                        |> Seq.map (fun tc -> tc.DisplayName)
-                        |> Seq.toArray
-            {
-                Result = TestResult.Error(tests=tests, messages=error.Messages, stackTraces=error.StackTraces)
-                Time = 0m
-                Output = null
-            }
-
-        static member Create (output: ITestResultMessage, result: TestResult) : TestCaseSummary =
-            {
-                Result = result
-                Time = output.ExecutionTime
-                Output = output.Output
-            }
-
-    type RemoteRunResult =
-        {
-            RunSummary: RunSummary
-            TestSummaries: IReadOnlyList<TestCaseSummary>
-        }
-
-    module Surrogate =
-        let inline createFrom x = if isNull x then null else (^T : (new : ^U -> ^T) x)
-
-        [<AllowNullLiteral>]
-        type SourceInformation(src: ISourceInformation) =
-            let mutable fileName = src.FileName
-            let mutable lineNumber = src.LineNumber
-            interface ISourceInformation with
-                member t.FileName
-                    with get () = fileName
-                    and set value = fileName <- value
-                member t.LineNumber
-                    with get () = lineNumber
-                    and set value = lineNumber <- value
-                member t.Serialize(_) = invalidOp null
-                member t.Deserialize(_) = invalidOp null
-
-        [<AllowNullLiteral>]
-        type AssemblyInfo(assembly: IAssemblyInfo) =
-            let assemblyPath = assembly.AssemblyPath
-            let name = assembly.Name
-            interface IAssemblyInfo with
-                member t.AssemblyPath = assemblyPath
-                member t.Name = name
-                member t.GetCustomAttributes(_) = invalidOp null
-                member t.GetType(_) = invalidOp null
-                member t.GetTypes(_) = invalidOp null
-                
-
-        [<AllowNullLiteral>]
-        type TypeInfo(typ: ITypeInfo) =
-            let assembly = createFrom<_, AssemblyInfo> typ.Assembly
-            let baseType = null // This is slightly wrong, but otherwise we'de have to serialize all the inheritance path
-            let interfaces = typ.Interfaces
-                             |> Seq.map (fun i -> createFrom<_, TypeInfo> i :> ITypeInfo)
-                             |> ResizeArray
-            let isAbstract = typ.IsAbstract;
-            let isGenericParameter = typ.IsGenericParameter
-            let isGenericType = typ.IsGenericType
-            let isSealed = typ.IsSealed
-            let isValueType = typ.IsValueType
-            let name = typ.Name
-            interface ITypeInfo with                
-                member t.Assembly = assembly :> IAssemblyInfo
-                member t.BaseType = baseType
-                member t.Interfaces = interfaces :> ITypeInfo seq
-                member t.IsAbstract = isAbstract
-                member t.IsGenericParameter = isGenericParameter
-                member t.IsGenericType = isGenericType
-                member t.IsSealed = isSealed
-                member t.IsValueType = isValueType
-                member t.Name = name
-                member t.GetMethod(_, _) = invalidOp null
-                member t.GetMethods(_) = invalidOp null
-                member t.GetCustomAttributes(_) = invalidOp null
-                member t.GetGenericArguments() = invalidOp null
-
-        [<AllowNullLiteral>]
-        type MethodInfo(minfo: IMethodInfo) =
-            let isAbstract = minfo.IsAbstract;
-            let isGenericMethodDefinition = minfo.IsGenericMethodDefinition;
-            let isPublic = minfo.IsPublic;
-            let isStatic = minfo.IsStatic;
-            let name = minfo.Name;
-            let returnType = createFrom<_, TypeInfo> minfo.ReturnType
-            let typ = createFrom<_, TypeInfo> minfo.Type
-            interface IMethodInfo with
-                member t.IsAbstract = isAbstract
-                member t.IsGenericMethodDefinition = isGenericMethodDefinition
-                member t.IsPublic = isPublic
-                member t.IsStatic = isStatic
-                member t.Name = name
-                member t.ReturnType = returnType :> ITypeInfo
-                member t.Type = typ :> ITypeInfo
-                member t.GetCustomAttributes(_) = invalidOp null
-                member t.GetGenericArguments() = invalidOp null
-                member t.GetParameters() = invalidOp null
-                member t.MakeGenericMethod(_) = invalidOp null
-
-        [<AllowNullLiteral>]
-        type TestAssembly(src: ITestAssembly) =
-            let assembly = createFrom<_, AssemblyInfo> src.Assembly
-            let configFileName = src.ConfigFileName
-            interface ITestAssembly with
-                member t.Assembly = assembly :> IAssemblyInfo
-                member t.ConfigFileName = configFileName
-                member t.Deserialize(_) = invalidOp null
-                member t.Serialize(_) = invalidOp null
-                
-
-        [<AllowNullLiteral>]
-        type TestCollection(src: ITestCollection) =
-            let collectionDefinition = createFrom<_, TypeInfo> src.CollectionDefinition
-            let displayName = src.DisplayName
-            let testAssembly = createFrom<_, TestAssembly> src.TestAssembly
-            interface ITestCollection with
-                member t.CollectionDefinition = collectionDefinition :> ITypeInfo
-                member t.DisplayName = displayName
-                member t.TestAssembly = testAssembly :> ITestAssembly
-                member t.UniqueID =  invalidOp null
-                member t.Deserialize(_) = invalidOp null
-                member t.Serialize(_) = invalidOp null
-                
-
-        [<AllowNullLiteral>]
-        type TestClass(src: ITestClass) =
-            let klass = createFrom<_, TypeInfo> src.Class
-            let testCollection = createFrom<_, TestCollection> src.TestCollection
-            interface ITestClass with
-                member t.Class = klass :> ITypeInfo
-                member t.TestCollection = testCollection :> ITestCollection
-                member t.Deserialize(_) = invalidOp null
-                member t.Serialize(_) = invalidOp null
-                
-
-        [<AllowNullLiteral>]
-        type TestMethod(src: ITestMethod) =
-            let mthd = createFrom<_, MethodInfo> src.Method
-            let testClass = createFrom<_, TestClass> src.TestClass
-            interface ITestMethod with
-                member t.Method = mthd :> IMethodInfo
-                member t.TestClass = testClass :> ITestClass
-                member t.Deserialize(_) = invalidOp null
-                member t.Serialize(_) = invalidOp null
-
-        type Xunit1TestCase(test: ITestCase) =
-            let displayName = test.DisplayName
-            let skipReason = test.SkipReason
-            let mutable sourceInformation = createFrom test.SourceInformation
-            let testMethod = createFrom<_, TestMethod> test.TestMethod
-            let testMethodArguments = test.TestMethodArguments
-            let traits = test.Traits
-            interface ITestCase with
-                member t.DisplayName = displayName
-                member t.SkipReason = skipReason
-                member t.SourceInformation
-                    with get () = sourceInformation :> ISourceInformation
-                    and set value = sourceInformation <- (value :?> SourceInformation)
-                member t.TestMethod = testMethod :> ITestMethod
-                member t.TestMethodArguments = testMethodArguments
-                member t.Traits = traits
-                member t.UniqueID = invalidOp null
-                member t.Serialize(_) = invalidOp null
-                member t.Deserialize(_) = invalidOp null
-
 module Message =
-    open Transport
-
     module Worker =
         type Discover = { RunId: string; }
-        type Run = { Id: string; Tests: Surrogate.Xunit1TestCase[] }
+        type Run = { Id: string; Tests: IReadOnlyList<TestCase> }
 
     module WorkerSet =
         type CoordinatedBy() = class end
@@ -272,88 +70,47 @@ module Message =
 
     module Dispatcher =
         type Start = { Client: IActorRef; Id: string }
-        type Discovered = { Id: string; Tests: Surrogate.Xunit1TestCase[][] }
-        type PartialResult = { Id: string; Result: RemoteRunResult }
+        type Discovered = { Id: string; Tests: IReadOnlyList<IReadOnlyList<TestCase>> }
+        type PartialResult = { Id: string; Result: TestResultSummary }
+        type FinishedBatch() = class end
         type Continue = { Worker: IActorRef }
 
     module Client =
         type Started() = class end
-        type PartialResult = { Result: RemoteRunResult }
+        type PartialResult = { Result: TestResultSummary }
         type Finished() = class end
 
 module Worker =
-    open System.Threading.Tasks
     open FireAnt.Akka.FSharp
+    open FSharp.Control
 
-    open Transport
     module Message = Message.Worker
     module Dispatcher = Message.Dispatcher
-
-    type private ITestAssemblyFinished with
-        member private t.ToSummary() : RunSummary =
-            RunSummary(Failed  = t.TestsFailed, Skipped = t.TestsSkipped, Time = t.ExecutionTime, Total = t.TestsFailed + t.TestsRun + t.TestsSkipped)
-
-    type private RunListener() =
-        let finishedTests = ResizeArray()
-        [<DefaultValue>] val mutable finished: ITestAssemblyFinished
-
-        member t.ToRemoteRunResult() : RemoteRunResult =
-            {
-                RunSummary = t.finished.ToSummary()
-                TestSummaries = finishedTests
-            }
-
-        inherit TestMessageVisitor()
-            override t.Visit(msg: IErrorMessage) : bool =
-                finishedTests.Add(TestCaseSummary.Create msg)
-                base.Visit(msg)
-
-            override t.Visit(finish: ITestPassed) : bool =
-                finishedTests.Add(TestCaseSummary.Create(finish, TestResult.Passed finish.TestCase.DisplayName))
-                base.Visit(finish)
-
-            override t.Visit(skipped: ITestSkipped) : bool =
-                finishedTests.Add(TestCaseSummary.Create(skipped, (TestResult.Skipped(skipped.TestCase.DisplayName, skipped.Reason))))
-                base.Visit(skipped)
-
-            override t.Visit(fail: ITestFailed) : bool =
-                finishedTests.Add(TestCaseSummary.Create(fail, TestResult.Failed fail.TestCase.DisplayName))
-                base.Visit(fail)
-
-            override t.Visit(finished: ITestAssemblyFinished) : bool =
-                t.finished <- finished
-                base.Visit(finished)
 
     type Actor private(builder: IWorkspaceBuilder, timing: ITestTimeRepository, splitter: ISplitStrategy) as t =
         inherit AsyncActor()
         do
             base.ReceiveRespond(t.OnReceiveRun)
             base.ReceiveRespond(t.OnReceiveDiscover)
-        let queue = TaskQueue(t.Self)
         static member Create(b, t, s) = Actor(b, t, s)
         static member Configure (props: Props) = props
         static member Path (id: int) : string = string id
 
         member private t.OnReceiveDiscover (msg: Message.Discover, callback: Dispatcher.Discovered -> unit) =
-            let builder = builder
-            queue.Enqueue(fun () ->
-                let dll = builder.Build(msg.RunId)
-                let tests = Tests.Discover(dll)
-                let splitTests = splitter.Split(tests |> Seq.map(fun t -> (t, timing.GetPredicted(t.DisplayName))) |> ResizeArray)
-                let splitTests = splitTests |> (Seq.map ((Seq.map Surrogate.Xunit1TestCase) >> Seq.toArray) >> Seq.toArray)
+            let path = Actor.Context.Self.Path
+            async {
+                let! tests = Test.Discover(path, (fun () -> builder.Build msg.RunId))
+                let splitTests = splitter.Split(tests |> Seq.map(fun t -> (t, timing.GetPredicted(t))) |> ResizeArray)
                 callback({ Dispatcher.Discovered.Id = msg.RunId; Dispatcher.Discovered.Tests = splitTests })
-            )
+            } |> Async.Start
 
-        member private t.OnReceiveRun (msg: Message.Run, callback: Dispatcher.PartialResult -> unit) : unit =
-            let builder = builder
-            queue.Enqueue(fun () ->
-                let dll = builder.Build(msg.Id)
-                let sink = RunListener()
-                using (new Xunit.Xunit1(AppDomainSupport.Required, null, dll.FullName)) (fun runner ->
-                    runner.Run((msg.Tests :> Surrogate.Xunit1TestCase seq) :?> ITestCase seq, sink)
-                )
-                callback({ Dispatcher.PartialResult.Id = msg.Id; Dispatcher.PartialResult.Result = sink.ToRemoteRunResult() })
-            )
+        member private t.OnReceiveRun (msg: Message.Run, callback: obj -> unit) : unit =
+            let path = Actor.Context.Self.Path
+            async{
+                for result in Test.Run(path, (fun () -> builder.Build msg.Id), msg.Tests) do
+                    callback({ Dispatcher.PartialResult.Id = msg.Id; Dispatcher.PartialResult.Result = result })
+                callback(Dispatcher.FinishedBatch())
+            } |> Async.Start
 
 module WorkerSet =
     open FireAnt.Akka.FSharp
@@ -382,25 +139,24 @@ module Dispatcher =
     module Coordinator = Message.Coordinator
     type DiscoverMessage = Message.Worker.Discover
     type RunMessage = Message.Worker.Run
-    open Transport
 
     type Run = { Client: IActorRef; Id: string }
     type State =
         | Initialized
         | WaitForDiscoveryWorker of run: Run
         | WaitForDiscoveryResult of run: Run
-        | RunTests of run: Run * finished: ResizeArray<RemoteRunResult> * running: int * waiting: Queue<Surrogate.Xunit1TestCase[]>
+        | RunTests of run: Run * running: int * waiting: Queue<IReadOnlyList<TestCase>>
 
         member t.Client : IActorRef =
             match t with
             | Initialized -> invalidOp null
             | WaitForDiscoveryWorker({ Client = client; }) -> client
             | WaitForDiscoveryResult({ Client = client; }) -> client
-            | RunTests({ Client = client; }, _, _, _) -> client
+            | RunTests({ Client = client; }, _, _) -> client
 
         member t.IsFinished =
             match t with
-            | RunTests(_, _, 0, waiting) when waiting.Count = 0 -> true
+            | RunTests(_, 0, waiting) when waiting.Count = 0 -> true
             | _ -> false
 
         member t.Start(ctx: IActorContext, client: IActorRef, id: string) =
@@ -416,10 +172,10 @@ module Dispatcher =
             | WaitForDiscoveryWorker run ->
                 worker.Tell({ DiscoverMessage.RunId = run.Id })
                 State.WaitForDiscoveryResult(run)
-            | RunTests(run, finished, running, waiting) ->
+            | RunTests(run, running, waiting) ->
                 if waiting.Count > 0 then
                     worker.Tell({ RunMessage.Id = run.Id; RunMessage.Tests = waiting.Dequeue() })
-                    State.RunTests(run, finished, running + 1, waiting)
+                    State.RunTests(run, running + 1, waiting)
                 else
                     ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| worker |] })
                     invalidOp null
@@ -427,21 +183,19 @@ module Dispatcher =
                 ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| worker |] })
                 invalidOp null
 
-        member t.ReceiveRemote(ctx: IActorContext, runId: string, tests: Surrogate.Xunit1TestCase[][]) =
+        member t.ReceiveRemote(ctx: IActorContext, runId: string, tests: IReadOnlyList<IReadOnlyList<TestCase>>) =
             let state = match t with
                         | WaitForDiscoveryResult run when run.Id = runId ->
-                            ctx.Parent.Tell({ Message.Coordinator.GetWorkers.Count = tests.Length })
-                            State.RunTests(run = run, finished = ResizeArray(), running = 0, waiting = Queue(tests))
+                            ctx.Parent.Tell({ Message.Coordinator.GetWorkers.Count = tests.Count })
+                            State.RunTests(run = run, running = 0, waiting = Queue(tests))
                         | _ -> t
             ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| ctx.Sender |] })
             state
 
-        member t.ReceiveRemote(ctx: IActorContext, runId: string, result: RemoteRunResult) =
+        member t.ReceiveBatchFinish(ctx: IActorContext) =
             let state = match t with
-                        | RunTests(run, finished, running, waiting) when run.Id = runId ->
-                            finished.Add(result)
-                            run.Client.Tell({ Client.PartialResult.Result = result })
-                            State.RunTests(run, finished, running - 1, waiting)
+                        | RunTests(run, running, waiting) ->
+                            State.RunTests(run, running - 1, waiting)
                         | _ -> t
             ctx.Parent.Tell({ Message.Coordinator.Ready.Workers = [| ctx.Sender |] })
             state
@@ -454,6 +208,7 @@ module Dispatcher =
             base.Receive<Message.Continue>(Action<Message.Continue>(t.OnReceive))
             base.Receive<Message.Discovered>(Action<Message.Discovered>(t.OnReceive))
             base.Receive<Message.PartialResult>(Action<Message.PartialResult>(t.OnReceive))
+            base.Receive<Message.FinishedBatch>(Action<Message.FinishedBatch>(t.OnReceive))
         static member Create(t) = Actor(t)
         static member Configure (props: Props) = props
         static member Path = "dispatcher"
@@ -466,8 +221,10 @@ module Dispatcher =
         member private t.OnReceive(msg: Message.Discovered) = 
             t.state <- t.state.ReceiveRemote(Actor.Context, msg.Id, msg.Tests)
         member private t.OnReceive(msg: Message.PartialResult) =
+            t.state.Client.Tell({ Client.PartialResult.Result = msg.Result })
+        member private t.OnReceive(msg: Message.FinishedBatch) =
             let context = Actor.Context
-            t.state <- t.state.ReceiveRemote(context, msg.Id, msg.Result)
+            t.state <- t.state.ReceiveBatchFinish(Actor.Context)
             if t.state.IsFinished then
                 t.state.Client.Tell(Client.Finished())
                 context.Stop(t.Self)
@@ -479,7 +236,7 @@ module Coordinator =
 
     type Actor private(router: IActorRef, timing: ITestTimeRepository) as t =
         inherit ReceiveActor()
-        let readyWorkers = HashBag()
+        let readyWorkers = HashBag<IActorRef>()
         let readyDispatchers = MultiRoundRobin<IActorRef>()
         do
             base.Receive<Message.Ready>(Action<Message.Ready>(t.OnReceive))
@@ -491,7 +248,6 @@ module Coordinator =
         override t.PreStart() =
             router.Tell(Message.WorkerSet.CoordinatedBy())
         member private t.OnReceive(msg: Message.Ready) =
-            let context = Actor.Context
             for worker in msg.Workers do
                 if not readyDispatchers.IsEmpty then
                     let dispatcher = readyDispatchers.Pop()
@@ -505,6 +261,6 @@ module Coordinator =
         member private t.OnReceive(msg: Message.GetWorkers) =
             let sender = Actor.Context.Sender
             let available = min readyWorkers.Count msg.Count
-            for _ in 1..available do 
+            for _ in 1..available do
                 sender.Tell({ Message.Dispatcher.Continue.Worker = readyWorkers.Take() })
             readyDispatchers.Push(sender, msg.Count - available)

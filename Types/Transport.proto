@@ -1,0 +1,25 @@
+package FireAnt.Transport;
+
+option optimize_for = SPEED;
+
+message TestCase {
+  required string Type = 1;
+  required string Method = 2;
+}
+
+enum TestResult {
+  Pass = 1;
+  Fail = 2;
+  Skip = 3;
+}
+
+message TestResultSummary {
+  required string DisplayName = 1;
+  required TestResult Result = 2;
+  optional double Time = 3;
+  optional string ExceptionType = 4;
+  optional string ExceptionMessage = 5;
+  optional string ExceptionStackTrace = 6;
+  optional string Reason = 7;
+  optional string Output = 8;
+}

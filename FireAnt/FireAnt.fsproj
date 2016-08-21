@@ -55,7 +55,7 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="TaskQueue.fs" />
+    <Compile Include="Interfaces.fs" />
     <Compile Include="Test.fs" />
     <Compile Include="Library.fs" />
     <None Include="App.config" />
@@ -74,6 +74,10 @@
       <HintPath>..\packages\Akka.Remote.1.1.1\lib\net45\Akka.Remote.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="FSharp.Control.AsyncSeq">
+      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\FSharp.Control.AsyncSeq.2.0.9\lib\net45\FSharp.Control.AsyncSeq.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Google.ProtocolBuffers">
       <HintPath>..\packages\Google.ProtocolBuffers.2.4.1.555\lib\net40\Google.ProtocolBuffers.dll</HintPath>
       <Private>True</Private>
@@ -83,7 +87,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="Helios">
-      <HintPath>..\packages\Helios.2.1.2\lib\net45\Helios.dll</HintPath>
+      <HintPath>d:\Users\vosen\Documents\Visual Studio 2015\Projects\FireAnt\packages\Helios.2.1.3\lib\net45\Helios.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
@@ -105,25 +109,16 @@
     </Reference>
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
-    <Reference Include="xunit.abstractions">
-      <HintPath>..\packages\xunit.abstractions.2.0.0\lib\net35\xunit.abstractions.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="xunit.core">
-      <HintPath>..\packages\xunit.extensibility.core.2.1.0\lib\portable-net45+win8+wp8+wpa81\xunit.core.dll</HintPath>
-    </Reference>
-    <Reference Include="xunit.execution.desktop">
-      <HintPath>..\packages\xunit.extensibility.execution.2.1.0\lib\net45\xunit.execution.desktop.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="xunit.runner.utility.desktop">
-      <HintPath>..\packages\xunit.extensibility.core.2.1.0\lib\portable-net45+win8+wp8+wpa81\xunit.runner.utility.desktop.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Akka.FSharp\Akka.FSharp.fsproj">
       <Name>Akka.FSharp</Name>
       <Project>{143019b3-bbbc-4016-a804-48b8e5b2fa1b}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\Types\Types.csproj">
+      <Name>Types</Name>
+      <Project>{1cdfcd4a-253a-4240-b9e7-2010db28d712}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
